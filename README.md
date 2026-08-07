@@ -45,6 +45,8 @@ The MVP uses SQLite and local storage to make demonstrations simple. Before publ
 
 The complete reusable design and implementation specification is [LearnSphere Design, Technology and Implementation System](05_design/LEARNSPHERE_DESIGN_AND_IMPLEMENTATION_SYSTEM.md).
 
+For a fresh engineering session or cloud hand-off, start with the [continuity handoff](10_management/CONTINUITY_HANDOFF.md) and [AWS release runbook](11_deployment/AWS_RELEASE_RUNBOOK.md).
+
 ## Branding
 
 LearnSphere AI is an internship project under CHATAKE INNOWORKS PVT. LTD. / MINDFORGEAI Division. The visual system is inspired by the organisation’s engineering-led, research-oriented public identity, while LearnSphere remains a distinct student product. © 2026 CHATAKE INNOWORKS PVT. LTD. All project rights reserved.
