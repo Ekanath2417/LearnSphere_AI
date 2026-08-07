@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.py[cod]
+.env
+06_code/database/*.db
+06_code/storage/uploads/*
+!06_code/storage/uploads/.gitkeep
+.pytest_cache/
+.coverage
+node_modules/
