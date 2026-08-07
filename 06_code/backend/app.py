@@ -307,6 +307,11 @@ def integrations():
     return jsonify({"providers": [{"name": "OpenAI", "status": "Administrator configuration required", "purpose": "Document-grounded study coaching"}, {"name": "Google Gemini", "status": "Administrator configuration required", "purpose": "Optional provider route"}, {"name": "NotebookLM", "status": "External workspace link", "purpose": "Open uploaded sources in a separate trusted service"}]})
 
 
+@app.get("/api/health")
+def health():
+    return jsonify({"status": "ok", "service": "learnsphere-ai", "time": now()})
+
+
 @app.get("/")
 @app.get("/<path:path>")
 def frontend(path="index.html"):
