@@ -17,7 +17,7 @@ class LearnSphereAPITest(unittest.TestCase):
         application.DATABASE = Path(cls.temp_dir) / "test.db"
         application.UPLOADS = Path(cls.temp_dir) / "uploads"
         application.app.config["TESTING"] = True
-        application.app.config["JWT_SECRET_KEY"] = "test-secret"
+        application.app.config["JWT_SECRET_KEY"] = "test-secret-with-at-least-32-characters"
         application.init_db()
 
     @classmethod

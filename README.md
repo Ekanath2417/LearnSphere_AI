@@ -14,7 +14,7 @@ python -m pip install -r requirements.txt
 python backend\app.py
 ```
 
-Open [http://localhost:5000](http://localhost:5000). Create a new account; it receives sample subjects, tasks, and a note so the workspace is immediately explorable.
+Open [http://localhost:5000](http://localhost:5000). Create a new account; it receives sample subjects, tasks, and a note so the workspace is immediately explorable. In this workspace, port 5000 was already occupied, so the verified running instance is available at [http://localhost:5050](http://localhost:5050).
 
 ## What is included
 

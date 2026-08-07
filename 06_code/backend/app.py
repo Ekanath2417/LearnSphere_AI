@@ -9,6 +9,7 @@ import os
 import re
 import sqlite3
 import uuid
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from functools import wraps
 from pathlib import Path
@@ -46,6 +47,16 @@ def db() -> sqlite3.Connection:
     return connection
 
 
+@contextmanager
+def database_context():
+    connection = db()
+    try:
+        yield connection
+        connection.commit()
+    finally:
+        connection.close()
+
+
 def rows(cursor: sqlite3.Cursor) -> list[dict]:
     return [dict(row) for row in cursor.fetchall()]
 
@@ -53,7 +64,7 @@ def rows(cursor: sqlite3.Cursor) -> list[dict]:
 def init_db() -> None:
     DATABASE.parent.mkdir(parents=True, exist_ok=True)
     UPLOADS.mkdir(parents=True, exist_ok=True)
-    with db() as connection:
+    with database_context() as connection:
         connection.executescript(SCHEMA.read_text(encoding="utf-8"))
         columns = {row["name"] for row in connection.execute("PRAGMA table_info(users)")}
         if "name" not in columns:
@@ -113,7 +124,7 @@ def register():
     if len(body["password"]) < 8:
         return api_error("Password must contain at least 8 characters")
     try:
-        with db() as connection:
+        with database_context() as connection:
             cursor = connection.execute("INSERT INTO users (name, email, password_hash, created_at) VALUES (?, ?, ?, ?)",
                                         (body["name"].strip(), email, generate_password_hash(body["password"]), now()))
             create_student_seed(connection, cursor.lastrowid)
@@ -126,7 +137,7 @@ def register():
 @required("email", "password")
 def login():
     body = payload()
-    with db() as connection:
+    with database_context() as connection:
         account = connection.execute("SELECT * FROM users WHERE email = ?", (body["email"].strip().lower(),)).fetchone()
     if not account or not check_password_hash(account["password_hash"], body["password"]):
         return api_error("Incorrect email or password", 401)
@@ -136,7 +147,7 @@ def login():
 @app.get("/api/me")
 @jwt_required()
 def me():
-    with db() as connection:
+    with database_context() as connection:
         account = connection.execute("SELECT id, name, email, created_at FROM users WHERE id = ?", (user_id(),)).fetchone()
     return jsonify(dict(account))
 
@@ -146,7 +157,7 @@ def me():
 def dashboard():
     uid = user_id()
     week_ago = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat(timespec="seconds")
-    with db() as connection:
+    with database_context() as connection:
         subject_count = connection.execute("SELECT COUNT(*) FROM subjects WHERE user_id = ?", (uid,)).fetchone()[0]
         complete = connection.execute("SELECT COUNT(*) FROM tasks WHERE user_id = ? AND status = 'done'", (uid,)).fetchone()[0]
         planned = connection.execute("SELECT COALESCE(SUM(planned_minutes), 0) FROM tasks WHERE user_id = ?", (uid,)).fetchone()[0]
@@ -163,11 +174,11 @@ def dashboard():
 def subjects():
     uid = user_id()
     if request.method == "GET":
-        with db() as connection:
+        with database_context() as connection:
             return jsonify(rows(connection.execute("SELECT * FROM subjects WHERE user_id = ? ORDER BY created_at DESC", (uid,))))
     body = payload()
     if not body.get("name", "").strip(): return api_error("Subject name is required")
-    with db() as connection:
+    with database_context() as connection:
         cursor = connection.execute("INSERT INTO subjects (user_id, name, description, color, created_at) VALUES (?, ?, ?, ?, ?)", (uid, body["name"].strip(), body.get("description", "").strip(), body.get("color", "#8B5CF6"), now()))
     return jsonify({"id": cursor.lastrowid, "message": "Subject added"}), 201
 
@@ -177,16 +188,16 @@ def subjects():
 def tasks():
     uid = user_id()
     if request.method == "GET":
-        with db() as connection:
+        with database_context() as connection:
             return jsonify(rows(connection.execute("SELECT tasks.*, subjects.name AS subject_name, subjects.color FROM tasks LEFT JOIN subjects ON subjects.id = tasks.subject_id WHERE tasks.user_id = ? ORDER BY due_date ASC", (uid,))))
     body = payload()
     if request.method == "PATCH":
         if not body.get("id"): return api_error("Task id is required")
-        with db() as connection:
+        with database_context() as connection:
             connection.execute("UPDATE tasks SET status = ? WHERE id = ? AND user_id = ?", (body.get("status", "done"), body["id"], uid))
         return jsonify({"message": "Task updated"})
     if not body.get("title", "").strip(): return api_error("Task title is required")
-    with db() as connection:
+    with database_context() as connection:
         cursor = connection.execute("INSERT INTO tasks (user_id, subject_id, title, due_date, planned_minutes, status, created_at) VALUES (?, ?, ?, ?, ?, 'upcoming', ?)", (uid, body.get("subject_id"), body["title"].strip(), body.get("due_date"), int(body.get("planned_minutes", 30)), now()))
     return jsonify({"id": cursor.lastrowid, "message": "Task planned"}), 201
 
@@ -196,10 +207,11 @@ def tasks():
 def notes():
     uid = user_id()
     if request.method == "GET":
-        with db() as connection: return jsonify(rows(connection.execute("SELECT notes.*, subjects.name AS subject_name FROM notes LEFT JOIN subjects ON subjects.id = notes.subject_id WHERE notes.user_id = ? ORDER BY notes.updated_at DESC", (uid,))))
+        with database_context() as connection:
+            return jsonify(rows(connection.execute("SELECT notes.*, subjects.name AS subject_name FROM notes LEFT JOIN subjects ON subjects.id = notes.subject_id WHERE notes.user_id = ? ORDER BY notes.updated_at DESC", (uid,))))
     body = payload()
     if not body.get("title", "").strip(): return api_error("Note title is required")
-    with db() as connection:
+    with database_context() as connection:
         cursor = connection.execute("INSERT INTO notes (user_id, subject_id, title, body, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)", (uid, body.get("subject_id"), body["title"].strip(), body.get("body", ""), now(), now()))
     return jsonify({"id": cursor.lastrowid, "message": "Note saved"}), 201
 
@@ -209,10 +221,11 @@ def notes():
 def diary():
     uid = user_id()
     if request.method == "GET":
-        with db() as connection: return jsonify(rows(connection.execute("SELECT * FROM diary_entries WHERE user_id = ? ORDER BY entry_date DESC", (uid,))))
+        with database_context() as connection:
+            return jsonify(rows(connection.execute("SELECT * FROM diary_entries WHERE user_id = ? ORDER BY entry_date DESC", (uid,))))
     body = payload()
     if not body.get("body", "").strip(): return api_error("Diary entry cannot be empty")
-    with db() as connection:
+    with database_context() as connection:
         connection.execute("INSERT INTO diary_entries (user_id, entry_date, mood, body, created_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(user_id, entry_date) DO UPDATE SET mood=excluded.mood, body=excluded.body", (uid, body.get("entry_date", now()[:10]), body.get("mood", "Focused"), body["body"].strip(), now()))
     return jsonify({"message": "Reflection saved"}), 201
 
@@ -226,7 +239,7 @@ def upload_resource():
     if extension not in ALLOWED_EXTENSIONS: return api_error("Unsupported file type")
     filename = f"{uuid.uuid4().hex}_{secure_filename(file.filename)}"
     file.save(UPLOADS / filename)
-    with db() as connection:
+    with database_context() as connection:
         cursor = connection.execute("INSERT INTO resources (user_id, subject_id, title, filename, mime_type, created_at) VALUES (?, ?, ?, ?, ?, ?)", (user_id(), request.form.get("subject_id") or None, request.form.get("title") or file.filename, filename, file.mimetype, now()))
     return jsonify({"id": cursor.lastrowid, "message": "Resource securely added to your library"}), 201
 
@@ -234,7 +247,7 @@ def upload_resource():
 @app.get("/api/resources")
 @jwt_required()
 def resources():
-    with db() as connection: return jsonify(rows(connection.execute("SELECT resources.*, subjects.name AS subject_name FROM resources LEFT JOIN subjects ON subjects.id = resources.subject_id WHERE resources.user_id = ? ORDER BY resources.created_at DESC", (user_id(),))))
+    with database_context() as connection: return jsonify(rows(connection.execute("SELECT resources.*, subjects.name AS subject_name FROM resources LEFT JOIN subjects ON subjects.id = resources.subject_id WHERE resources.user_id = ? ORDER BY resources.created_at DESC", (user_id(),))))
 
 
 @app.post("/api/study-sessions")
@@ -242,7 +255,7 @@ def resources():
 def study_session():
     body = payload()
     minutes = max(1, min(int(body.get("minutes", 25)), 600))
-    with db() as connection: connection.execute("INSERT INTO study_sessions (user_id, subject_id, minutes, started_at, created_at) VALUES (?, ?, ?, ?, ?)", (user_id(), body.get("subject_id"), minutes, now(), now()))
+    with database_context() as connection: connection.execute("INSERT INTO study_sessions (user_id, subject_id, minutes, started_at, created_at) VALUES (?, ?, ?, ?, ?)", (user_id(), body.get("subject_id"), minutes, now(), now()))
     return jsonify({"message": f"{minutes} focused minutes recorded"}), 201
 
 
@@ -262,7 +275,7 @@ def generate_quiz():
 @jwt_required()
 def submit_quiz():
     body = payload(); total = int(body.get("total", 3)); score = max(0, min(int(body.get("score", 0)), total))
-    with db() as connection: connection.execute("INSERT INTO quizzes (user_id, topic, score, total, created_at) VALUES (?, ?, ?, ?, ?)", (user_id(), body.get("topic", "Practice"), score, total, now()))
+    with database_context() as connection: connection.execute("INSERT INTO quizzes (user_id, topic, score, total, created_at) VALUES (?, ?, ?, ?, ?)", (user_id(), body.get("topic", "Practice"), score, total, now()))
     return jsonify({"message": "Result saved", "score": score, "total": total, "feedback": "Good work. Review missed concepts, then retest with a fresh set."})
 
 
@@ -270,7 +283,7 @@ def submit_quiz():
 @jwt_required()
 def insights():
     uid = user_id()
-    with db() as connection:
+    with database_context() as connection:
         planned = connection.execute("SELECT COALESCE(SUM(planned_minutes), 0) FROM tasks WHERE user_id = ?", (uid,)).fetchone()[0]
         logged = connection.execute("SELECT COALESCE(SUM(minutes), 0) FROM study_sessions WHERE user_id = ?", (uid,)).fetchone()[0]
         result = connection.execute("SELECT AVG(CAST(score AS FLOAT) / total) FROM quizzes WHERE user_id = ? AND total > 0", (uid,)).fetchone()[0]
