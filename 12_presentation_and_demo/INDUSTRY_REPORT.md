@@ -2,7 +2,7 @@
 
 ## Executive summary
 
-LearnSphere AI has been upgraded from a static proof-of-concept into a runnable full-stack MVP with a coherent product identity, persistent data model, protected API surface, dynamic student workspace, local deployment package, quality gate, and delivery documentation. The work positions the project as a credible educational-technology portfolio piece for Chatake Innoworks Pvt. Ltd. / MindforgeAI Division.
+LearnSphere AI has been upgraded from a static proof-of-concept into a runnable full-stack MVP with a coherent product identity, persistent data model, protected API surface, dynamic student workspace, local deployment package, quality gate, and delivery documentation. The work positions the project as a credible educational-technology portfolio piece for CHATAKE INNOWORKS PVT. LTD. / MINDFORGEAI Division.
 
 ## Delivered
 

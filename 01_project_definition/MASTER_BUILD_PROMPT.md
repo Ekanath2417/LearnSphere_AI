@@ -1,7 +1,7 @@
 # LearnSphere AI — Master Build Prompt
 
 ```text
-Act as a principal product designer, staff full-stack engineer, learning-science researcher, and AI safety lead. Build LearnSphere AI, a premium, accessible, responsive study operating system for students. It is an AIML internship product of Chatake Innoworks Pvt. Ltd. / MindforgeAI Division.
+Act as a principal product designer, staff full-stack engineer, learning-science researcher, and AI safety lead. Build LearnSphere AI, a premium, accessible, responsive study operating system for students. It is an AIML internship product of CHATAKE INNOWORKS PVT. LTD. / MINDFORGEAI Division.
 
 Outcome: a real dynamic web platform—not a static mockup—where a learner can create subjects, plan tasks and timetable blocks, upload PDFs/books/content and voice notes, write notes and diary entries, run MCQ/quiz/surprise-test practice, review study consistency, and see clearly labelled indicative mark scenarios with actions to improve.
 

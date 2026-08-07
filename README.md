@@ -1,6 +1,6 @@
 # LearnSphere AI
 
-LearnSphere AI is a private study operating system built during the **MindforgeAI AIML Internship** at **Chatake Innoworks Pvt. Ltd.** It gives students one calm workspace for subjects, study plans, files, notes, voice-recording uploads, practice checks, diary reflections, and learning signals.
+LearnSphere AI is a private study operating system built during the **MINDFORGEAI AIML Internship** at **CHATAKE INNOWORKS PVT. LTD.** It gives students one calm workspace for subjects, study plans, files, notes, voice-recording uploads, practice checks, diary reflections, and learning signals.
 
 > Current state: a runnable, full-stack local MVP with a persistent SQLite store and a premium responsive interface. The AI assistant is intentionally a safe local fallback until an approved server-side provider is configured.
 
@@ -30,6 +30,7 @@ Open [http://localhost:5000](http://localhost:5000). Create a new account; it re
 | Folder | Purpose |
 | --- | --- |
 | `01_project_definition` | Vision, blueprint, prompt, and scope |
+| `05_design` | Canonical reusable design, technology and implementation system |
 | `02_research_and_sources` | Research log and source notes |
 | `04_active_workspace` | Team working agreements |
 | `06_code` | Flask application, SPA, database, and runtime config |
@@ -42,6 +43,8 @@ Open [http://localhost:5000](http://localhost:5000). Create a new account; it re
 
 The MVP uses SQLite and local storage to make demonstrations simple. Before public deployment, move to PostgreSQL/object storage, put the app behind HTTPS, set a strong `JWT_SECRET_KEY`, define explicit CORS origins, add rate limiting and virus scanning, and complete a data/privacy review. See [deployment guide](11_deployment/DEPLOYMENT.md) and [product blueprint](01_project_definition/PRODUCT_BLUEPRINT.md).
 
+The complete reusable design and implementation specification is [LearnSphere Design, Technology and Implementation System](05_design/LEARNSPHERE_DESIGN_AND_IMPLEMENTATION_SYSTEM.md).
+
 ## Branding
 
-LearnSphere AI is an internship project under Chatake Innoworks Pvt. Ltd. / MindforgeAI Division. The visual system is inspired by the organisation’s engineering-led, research-oriented public identity, while LearnSphere remains a distinct student product.
+LearnSphere AI is an internship project under CHATAKE INNOWORKS PVT. LTD. / MINDFORGEAI Division. The visual system is inspired by the organisation’s engineering-led, research-oriented public identity, while LearnSphere remains a distinct student product. © 2026 CHATAKE INNOWORKS PVT. LTD. All project rights reserved.

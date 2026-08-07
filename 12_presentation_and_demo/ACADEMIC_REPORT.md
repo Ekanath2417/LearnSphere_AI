@@ -2,7 +2,7 @@
 
 ## Abstract
 
-LearnSphere AI is an AIML-enabled study operating system that consolidates students’ academic planning, personal learning resources, practice, reflection and progress signals. The project responds to fragmented study workflows in which schedules, notes, PDFs, recordings and assessment preparation are separated across tools. The local MVP provides authenticated, persistent student workspaces with subject management, task planning, resource upload, notes, quizzes, focus logging, diary entries and clearly bounded learning insights.
+LearnSphere AI is an AIML-enabled study operating system developed under MINDFORGEAI / CHATAKE INNOWORKS PVT. LTD. It consolidates students’ academic planning, personal learning resources, practice, reflection and progress signals. The project responds to fragmented study workflows in which schedules, notes, PDFs, recordings and assessment preparation are separated across tools. The local MVP provides authenticated, persistent student workspaces with subject management, task planning, resource upload, notes, quizzes, focus logging, diary entries and clearly bounded learning insights.
 
 ## Problem statement
 
