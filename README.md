@@ -20,6 +20,10 @@ python backend\app.py
 
 Open `http://localhost:5000`.
 
+## Deploy the Application API
+
+GitHub Pages hosts the project website. To enable account creation and sign-in on that website, deploy the Flask API through [Render](https://render.com/deploy?repo=https%3A%2F%2Fgithub.com%2FEkanath2417%2FLearnSphere_AI). Render reads the root `render.yaml` and provides the API at `https://learnsphere-ai-ekanath2417.onrender.com`.
+
 ## What Is Included
 
 - Branded landing page for LearnSphere AI with Chatake Innoworks / MindForgeAI attribution.

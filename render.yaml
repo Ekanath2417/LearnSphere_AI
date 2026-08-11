@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: learnsphere-ai-ekanath2417
+    env: python
+    buildCommand: pip install -r 06_code/requirements.txt
+    startCommand: cd 06_code && gunicorn --bind 0.0.0.0:$PORT backend.wsgi:app
+    healthCheckPath: /
+    envVars:
+      - key: JWT_SECRET_KEY
+        generateValue: true
+      - key: FLASK_DEBUG
+        value: "0"
+      - key: CORS_ORIGINS
+        value: "https://ekanath2417.github.io"
