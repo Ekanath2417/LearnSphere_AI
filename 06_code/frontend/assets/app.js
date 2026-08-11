@@ -55,7 +55,12 @@ async function api(path, options = {}) {
   }
   const headers = options.body instanceof FormData ? {} : {"Content-Type": "application/json"};
   if (state.token) headers.Authorization = `Bearer ${state.token}`;
-  const res = await fetch(`${apiBase}${path}`, {...options, headers: {...headers, ...(options.headers || {})}});
+  let res;
+  try {
+    res = await fetch(`${apiBase}${path}`, {...options, headers: {...headers, ...(options.headers || {})}});
+  } catch {
+    throw new Error("The LearnSphere API is not online yet. Deploy the Render service, then try again.");
+  }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     if (res.status === 401 && state.token) logout();
