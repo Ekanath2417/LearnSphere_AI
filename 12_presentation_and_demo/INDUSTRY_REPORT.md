@@ -1,39 +1,57 @@
-# Industry Delivery Report — LearnSphere AI
+# Industry Delivery Report - LearnSphere AI
 
-## Executive summary
+## Executive Summary
 
-LearnSphere AI has been upgraded from a static proof-of-concept into a runnable full-stack MVP with a coherent product identity, persistent data model, protected API surface, dynamic student workspace, local deployment package, quality gate, and delivery documentation. The work positions the project as a credible educational-technology portfolio piece for CHATAKE INNOWORKS PVT. LTD. / MINDFORGEAI Division.
+LearnSphere AI has been transformed into a cleaner full-stack internship deliverable with a branded landing page, integrated student workspace, persistent backend, academic content modules, deployment assets, automated checks, and a complete documentation pack. The project is positioned as an educational technology portfolio piece under the MindForgeAI internship environment at Chatake Innoworks Pvt. Ltd.
 
-## Delivered
+## Delivered Outcomes
 
-- Premium responsive landing page, brand mark/favicon, metadata, footer, and internship attribution.
-- Dynamic dashboard: subjects, study tasks, focus time, consistency, next actions, and coach surface.
-- Persistent application services for identity, planning, notes, diary, uploads, practice and insights.
-- Secure-by-design integration position: no third-party password collection; provider access must use server secrets or OAuth.
-- Docker/Render starter assets, environment template, git ignore, repository rules, testing, team plan and reports.
+- Modern landing page with LearnSphere AI identity and Chatake Innoworks / MindForgeAI attribution.
+- Responsive student workspace for dashboard, planner, knowledge base, syllabus, PYQ, timetable, practice, insights, diary, and AI connection guidance.
+- Flask backend with JWT-protected personal workspace APIs.
+- Academic content routes for notes, syllabus, previous-year questions, and timetable.
+- Testing through Python `unittest`.
+- Docker, Render, GitHub Actions, GitHub Pages guidance, and documentation.
 
-## Architecture decision
+## Architecture Decision
 
-The project uses a lightweight Flask/SQLite stack to maximise local demonstrability and internship team velocity. This is intentionally not presented as the final public architecture. The production target is a browser client + API service + PostgreSQL + private object storage + worker/scheduler + evaluated AI gateway.
+The current project uses Flask, SQLite, and a static JavaScript frontend to keep the internship demo easy to run and review. This is suitable for an MVP and academic demonstration. A public production release should use managed database storage, private object storage, monitoring, backups, and stricter data isolation.
 
-## Risk register
+## Risk Register
 
-| Risk | Current control | Required next control |
+| Risk | Current Control | Required Next Control |
 | --- | --- | --- |
-| Student data exposure | JWT API and ignored local uploads | HTTPS, fine-grained authorization, DPA/privacy review |
-| Unsafe AI output | local fallback and disclaimers | retrieval citations, filters, evaluation and human escalation |
-| Misleading predictions | explicitly indicative language | calibrated model validation and confidence bounds |
-| File-upload abuse | allowlist and 25 MB limit | malware scanning, object storage policy, content validation |
-| Demo data persistence | local SQLite | managed backups, migrations, retention policy |
+| Student data exposure | JWT for personal workspace APIs | HTTPS, per-user academic content ownership, privacy review |
+| Unsafe AI output | Local fallback and careful wording | Retrieval citations, model evaluation, moderation, escalation path |
+| Misleading predictions | Indicative labels and disclaimer | Calibrated models and validation study |
+| File upload abuse | Extension allowlist and size limit | Malware scanning, private object storage, download authorization |
+| Demo persistence limits | Local SQLite | PostgreSQL, backups, migrations, retention policy |
 
-## Recommended 90-day roadmap
+## 90-Day Roadmap
 
-**0–30 days:** usability test the MVP, resolve accessibility findings, add PostgreSQL/object storage, CI and analytics consent.
+### Days 0-30
 
-**31–60 days:** build resource extraction and citation-backed RAG, quiz/syllabus evaluation suite, mentor/admin workflows and user data controls.
+- Run usability tests with a small consenting student group.
+- Complete accessibility review.
+- Move database to PostgreSQL.
+- Move uploads to private object storage.
+- Add basic monitoring and structured logs.
 
-**61–90 days:** pilot with a small consented cohort, validate outcomes, introduce scheduling/notifications cautiously, conduct security review, and prepare a monitored production release.
+### Days 31-60
 
-## Acceptance definition
+- Build document parsing and citation-backed retrieval.
+- Add evaluated quiz generation mapped to syllabus units.
+- Improve student data controls.
+- Prepare mentor/admin review workflows.
 
-The next release is ready for a supervised pilot when it passes automated tests, has a privacy notice and deletion process, maintains authenticated data separation, makes all AI limitations visible, and has completed mobile/accessibility review with the target learner group.
+### Days 61-90
+
+- Conduct a supervised pilot.
+- Validate learning signal usefulness.
+- Add optional reminders with student control.
+- Complete security and privacy review.
+- Prepare monitored production release plan.
+
+## Acceptance Definition
+
+The next release is ready for a supervised pilot when tests pass, student data is isolated, privacy notice and deletion process exist, AI limitations are visible, uploads are secured, and mobile/accessibility review is complete.

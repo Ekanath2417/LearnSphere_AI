@@ -17,10 +17,20 @@ from pathlib import Path
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager, create_access_token, get_jwt_identity, jwt_required
+from dotenv import load_dotenv
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
+from sqlalchemy import create_engine
+from sqlalchemy.pool import NullPool
+from config import Config
+from models import db
+from routes.notes import notes_bp
+from routes.pyq import pyq_bp
+from routes.syllabus import syllabus_bp
+from routes.timetable import timetable_bp
 
 ROOT = Path(__file__).resolve().parents[1]
+load_dotenv(Path(__file__).resolve().parent / ".env")
 FRONTEND = ROOT / "frontend"
 DATABASE = ROOT / "database" / "learnsphere.db"
 SCHEMA = ROOT / "database" / "schema.sql"
@@ -28,19 +38,29 @@ UPLOADS = ROOT / "storage" / "uploads"
 ALLOWED_EXTENSIONS = {"pdf", "txt", "md", "docx", "png", "jpg", "jpeg", "webm", "m4a", "mp3", "wav"}
 
 app = Flask(__name__, static_folder=str(FRONTEND), static_url_path="")
+app.config.from_object(Config)
 app.config.update(
     JWT_SECRET_KEY=os.getenv("JWT_SECRET_KEY", "replace-this-dev-secret-before-production"),
     MAX_CONTENT_LENGTH=25 * 1024 * 1024,
+    UPLOAD_FOLDER=str(UPLOADS),
+    SQLALCHEMY_DATABASE_URI=f"sqlite:///{DATABASE.as_posix()}",
+    SQLALCHEMY_TRACK_MODIFICATIONS=False,
 )
-CORS(app, resources={r"/api/*": {"origins": os.getenv("CORS_ORIGINS", "*").split(",")}})
+cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:5000,http://127.0.0.1:5000").split(",")
+CORS(app, resources={r"/api/*": {"origins": cors_origins}})
 jwt = JWTManager(app)
+db.init_app(app)
+app.register_blueprint(notes_bp)
+app.register_blueprint(syllabus_bp)
+app.register_blueprint(pyq_bp)
+app.register_blueprint(timetable_bp)
 
 
 def now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-def db() -> sqlite3.Connection:
+def database_connection() -> sqlite3.Connection:
     connection = sqlite3.connect(DATABASE)
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA foreign_keys = ON")
@@ -49,7 +69,7 @@ def db() -> sqlite3.Connection:
 
 @contextmanager
 def database_context():
-    connection = db()
+    connection = database_connection()
     try:
         yield connection
         connection.commit()
@@ -64,11 +84,37 @@ def rows(cursor: sqlite3.Cursor) -> list[dict]:
 def init_db() -> None:
     DATABASE.parent.mkdir(parents=True, exist_ok=True)
     UPLOADS.mkdir(parents=True, exist_ok=True)
+    app.config["UPLOAD_FOLDER"] = str(UPLOADS)
     with database_context() as connection:
         connection.executescript(SCHEMA.read_text(encoding="utf-8"))
         columns = {row["name"] for row in connection.execute("PRAGMA table_info(users)")}
         if "name" not in columns:
             connection.execute("ALTER TABLE users ADD COLUMN name TEXT NOT NULL DEFAULT 'Student'")
+        note_columns = {row["name"] for row in connection.execute("PRAGMA table_info(notes)")}
+        note_migrations = {
+            "subject": "TEXT NOT NULL DEFAULT 'General'",
+            "semester": "INTEGER NOT NULL DEFAULT 1",
+            "topic": "TEXT NOT NULL DEFAULT 'General'",
+            "description": "TEXT NOT NULL DEFAULT ''",
+            "content": "TEXT NOT NULL DEFAULT ''",
+            "file_url": "TEXT",
+        }
+        for column, definition in note_migrations.items():
+            if column not in note_columns:
+                connection.execute(f"ALTER TABLE notes ADD COLUMN {column} {definition}")
+    # SQLAlchemy owns the academic-content tables and safely creates them on start.
+    app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{DATABASE.as_posix()}"
+    with app.app_context():
+        # Tests and deployment configuration may select a different database
+        # before initialization; discard a lazily cached old engine safely.
+        db.session.remove()
+        old_engines = app.extensions["sqlalchemy"]._app_engines.get(app, {})
+        for old_engine in old_engines.values():
+            old_engine.dispose()
+        app.extensions["sqlalchemy"]._app_engines[app] = {
+            None: create_engine(app.config["SQLALCHEMY_DATABASE_URI"], poolclass=NullPool)
+        }
+        db.create_all()
 
 
 def api_error(message: str, code: int = 400):
@@ -111,7 +157,7 @@ def create_student_seed(connection: sqlite3.Connection, student_id: int) -> None
         connection.execute("INSERT INTO tasks (user_id, subject_id, title, due_date, planned_minutes, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
                            (student_id, subject_id, title, due, minutes, status, now()))
     connection.execute("INSERT INTO notes (user_id, subject_id, title, body, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
-                       (student_id, subject_id, "Limits — quick revision", "Key ideas, formulae, and questions to revisit before the next study block.", now(), now()))
+                       (student_id, subject_id, "Limits - quick revision", "Key ideas, formulae, and questions to revisit before the next study block.", now(), now()))
 
 
 @app.post("/api/auth/register")
@@ -200,20 +246,6 @@ def tasks():
     with database_context() as connection:
         cursor = connection.execute("INSERT INTO tasks (user_id, subject_id, title, due_date, planned_minutes, status, created_at) VALUES (?, ?, ?, ?, ?, 'upcoming', ?)", (uid, body.get("subject_id"), body["title"].strip(), body.get("due_date"), int(body.get("planned_minutes", 30)), now()))
     return jsonify({"id": cursor.lastrowid, "message": "Task planned"}), 201
-
-
-@app.route("/api/notes", methods=["GET", "POST"])
-@jwt_required()
-def notes():
-    uid = user_id()
-    if request.method == "GET":
-        with database_context() as connection:
-            return jsonify(rows(connection.execute("SELECT notes.*, subjects.name AS subject_name FROM notes LEFT JOIN subjects ON subjects.id = notes.subject_id WHERE notes.user_id = ? ORDER BY notes.updated_at DESC", (uid,))))
-    body = payload()
-    if not body.get("title", "").strip(): return api_error("Note title is required")
-    with database_context() as connection:
-        cursor = connection.execute("INSERT INTO notes (user_id, subject_id, title, body, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)", (uid, body.get("subject_id"), body["title"].strip(), body.get("body", ""), now(), now()))
-    return jsonify({"id": cursor.lastrowid, "message": "Note saved"}), 201
 
 
 @app.route("/api/diary", methods=["GET", "POST"])
@@ -309,7 +341,13 @@ def integrations():
 
 @app.get("/api/health")
 def health():
-    return jsonify({"status": "ok", "service": "learnsphere-ai", "time": now()})
+    return jsonify({"success": True, "message": "LearnSphere AI backend is running", "data": {"time": now()}})
+
+
+@app.get("/uploads/<path:filename>")
+def uploaded_file(filename):
+    """Serve stored uploads; filenames are generated server-side and traversal-safe."""
+    return send_from_directory(UPLOADS, filename)
 
 
 @app.get("/")
@@ -322,6 +360,22 @@ def frontend(path="index.html"):
 
 @app.errorhandler(413)
 def too_large(_): return api_error("File exceeds the 25 MB upload limit", 413)
+
+
+@app.errorhandler(404)
+def not_found(_):
+    return jsonify({"success": False, "message": "Resource not found", "error": "NOT_FOUND"}), 404
+
+
+@app.errorhandler(405)
+def method_not_allowed(_):
+    return jsonify({"success": False, "message": "Method not allowed", "error": "METHOD_NOT_ALLOWED"}), 405
+
+
+@app.errorhandler(500)
+def internal_error(error):
+    app.logger.exception("Unexpected API error: %s", error)
+    return jsonify({"success": False, "message": "An unexpected server error occurred", "error": "INTERNAL_ERROR"}), 500
 
 
 if __name__ == "__main__":

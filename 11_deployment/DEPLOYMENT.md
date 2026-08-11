@@ -1,38 +1,70 @@
-# Deployment Guide
+# Deployment Guide - LearnSphere AI
 
-## Local demonstration
-
-Use the commands in the root README. The app will be served at `http://localhost:5000`; no third-party AI key is needed for the demo fallback.
-
-## Docker package
+## Local Demonstration
 
 From the repository root:
+
+```powershell
+cd 06_code
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+python backend\app.py
+```
+
+Open `http://localhost:5000`.
+
+## Environment Variables
+
+Create `06_code/backend/.env` from `.env.example` and set:
+
+- `JWT_SECRET_KEY` - long unique server secret.
+- `CORS_ORIGINS` - exact allowed origins for the deployed frontend/API.
+- `FLASK_DEBUG` - `0` for production-like runs.
+- Future AI provider keys - server-side only, never in frontend code or git.
+
+## Docker Package
 
 ```powershell
 $env:JWT_SECRET_KEY = "generate-a-long-unique-secret"
 docker compose -f 11_deployment/docker-compose.yml up --build
 ```
 
-The compose package persists its SQLite database and uploads in Docker volumes. It is suitable for demonstrations, not a multi-instance public deployment.
+The Docker setup persists SQLite and uploads through volumes. It is useful for demos but not the recommended multi-user production architecture.
 
-## Managed hosting
+## Render Starter Deployment
 
-`render.yaml` provisions a starter web service. Attach a managed PostgreSQL service and private object storage before public launch; SQLite and local files may be lost on ephemeral hosts. Set these secrets in the host dashboard:
+`11_deployment/render.yaml` provides a starter web service:
 
-- `JWT_SECRET_KEY`: a unique, high-entropy secret.
-- `CORS_ORIGINS`: exact deployed frontend origin(s), never `*` in production.
-- future provider keys: store only in secret management, never browser code or git.
+- Build command: install `06_code/requirements.txt`.
+- Start command: run Gunicorn against `backend.wsgi:app`.
+- Health check path: `/`.
 
-## Production readiness gate
+For a real pilot, attach PostgreSQL and private object storage instead of relying on ephemeral local files.
 
-- [ ] PostgreSQL migrations and database backups
-- [ ] private object storage with malware scanning and download authorization
-- [ ] HTTPS, explicit CORS, secure cookie/token strategy, rate limits and CSRF review
-- [ ] application monitoring, structured logs, and incident contact
-- [ ] privacy policy, data deletion/export process and student consent text
-- [ ] AI evaluation, prompt-injection tests, source citations and provider data-processing review
-- [ ] accessibility and mobile acceptance testing
+## GitHub Pages
+
+GitHub Pages can publish the static frontend as a public project website. It cannot run the Flask backend. Use `11_deployment/GITHUB_PAGES.md` for the Pages workflow.
+
+Recommended split:
+
+- GitHub Pages: landing page and project presentation.
+- Render/AWS/App Runner: Flask backend and full application.
+
+## Production Readiness Gate
+
+- [ ] PostgreSQL with migrations and backups
+- [ ] Private object storage for uploads
+- [ ] Upload malware scanning and file validation
+- [ ] HTTPS everywhere
+- [ ] Explicit CORS origins
+- [ ] Rate limiting and abuse protection
+- [ ] Per-user ownership for all student and academic content
+- [ ] Privacy notice, consent text, deletion/export process
+- [ ] AI provider review, prompt-injection tests, source citations, and evaluation
+- [ ] Accessibility and mobile acceptance testing
+- [ ] Monitoring, logs, alerts, and incident contact
 
 ## Rollback
 
-Deploy immutable tagged releases. If an issue is discovered, redeploy the previous passing image and preserve the database volume; do not overwrite student data during rollback.
+Use immutable tagged releases. If a release fails, redeploy the previous passing image and preserve database/object-storage state. Do not overwrite student data during rollback.
