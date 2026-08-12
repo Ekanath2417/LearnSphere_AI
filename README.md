@@ -2,6 +2,10 @@
 
 LearnSphere AI is a student-centred study operating system developed during the **MindForgeAI AIML Internship** at **Chatake Innoworks Pvt. Ltd.** It gives students a focused workspace for subjects, plans, notes, syllabus, timetable, previous-year questions, uploads, practice, diary reflections, and learning signals.
 
+## Active Development Workspace
+
+For future team work, use the separate clone at `D:\LearnSphere_AI_ActiveWorkspace`, not the baseline reference folder. Start its independent local server at `http://localhost:5051` with `04_active_workspace\RUN_LOCALHOST.ps1`. The complete operating guide is [ACTIVE_WORKSPACE_BOOKLET.md](04_active_workspace/ACTIVE_WORKSPACE_BOOKLET.md).
+
 The project is designed as a responsible AIML internship deliverable. AI support is framed as study assistance, not authority. Any predicted mark is an indicative learning scenario only and must not be treated as certain, diagnostic, or official.
 
 ## Current Status
