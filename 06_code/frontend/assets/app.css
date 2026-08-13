@@ -508,17 +508,55 @@ input, textarea, select {
   flex-direction: column;
   gap: 10px;
 }
+.chat-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.chat-toolbar select {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: white;
+}
+.chat-toolbar .text-button {
+  white-space: nowrap;
+  margin-left: 8px;
+}
+.chat-toolbar .danger {
+  color: #b42318;
+}
 .bubble {
   max-width: 86%;
   padding: 12px;
   border-radius: 8px;
   font-size: 13px;
   line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.bubble.loading {
+  opacity: 0.75;
+  font-style: italic;
+}
+.bubble.error {
+  border: 1px solid #f3b2aa;
+  background: #fff1ef;
+  color: #7a271a;
 }
 .coach { background: #eef3eb; }
 .student { background: var(--ink); color: white; align-self: flex-end; }
-.chat-form { display: flex; gap: 8px; margin-top: 14px; }
-.chat-form input { flex: 1; }
+.chat-form { display: flex; align-items: flex-end; gap: 8px; margin-top: 14px; }
+.chat-form textarea {
+  flex: 1;
+  min-height: 46px;
+  max-height: 140px;
+  resize: vertical;
+}
 .quiz-q {
   padding: 16px 0;
   border-top: 1px solid var(--line);

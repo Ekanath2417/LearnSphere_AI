@@ -2,6 +2,7 @@ from datetime import datetime
 
 from flask import Blueprint, request
 from routes.common import error, parse_id, public_user_id, response
+from flask_jwt_extended import jwt_required
 from routes.uploads import optional_pdf
 from services.pyq_service import service
 from utils.validators import clean_json, integer, required
@@ -10,6 +11,7 @@ pyq_bp = Blueprint("pyq", __name__, url_prefix="/api/pyq")
 
 
 @pyq_bp.post("/upload")
+@jwt_required()
 def upload():
     try:
         file_url = optional_pdf("pyq")
@@ -32,6 +34,7 @@ def values(data, partial=False):
 
 
 @pyq_bp.route("", methods=["GET", "POST"])
+@jwt_required()
 def collection():
     uid = public_user_id()
     if request.method == "GET":
@@ -43,6 +46,7 @@ def collection():
 
 
 @pyq_bp.route("/<record_id>", methods=["GET", "PUT", "DELETE"])
+@jwt_required()
 def item(record_id):
     record = service.get(parse_id(record_id), public_user_id()) if parse_id(record_id) else None
     if not record: return error("PYQ not found", 404, "NOT_FOUND")

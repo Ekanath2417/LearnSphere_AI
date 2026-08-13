@@ -1,8 +1,4 @@
-"""LearnSphere AI application server.
-
-The API is deliberately provider-agnostic. AI requests use a transparent local
-study-coach fallback until an administrator configures a server-side provider.
-"""
+"""LearnSphere AI application server."""
 from __future__ import annotations
 
 import os
@@ -22,30 +18,60 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 from sqlalchemy import create_engine
 from sqlalchemy.pool import NullPool
+from urllib.parse import urlparse
 from config import Config
 from models import db
 from routes.notes import notes_bp
 from routes.pyq import pyq_bp
 from routes.syllabus import syllabus_bp
 from routes.timetable import timetable_bp
+from services.gemini_service import generate_chat_response, GeminiServiceError
 
 ROOT = Path(__file__).resolve().parents[1]
 load_dotenv(Path(__file__).resolve().parent / ".env")
 FRONTEND = ROOT / "frontend"
+# Allow a production-ready DATABASE_URL to be provided; otherwise use the repo sqlite file.
 DATABASE = ROOT / "database" / "learnsphere.db"
 SCHEMA = ROOT / "database" / "schema.sql"
 UPLOADS = ROOT / "storage" / "uploads"
 ALLOWED_EXTENSIONS = {"pdf", "txt", "md", "docx", "png", "jpg", "jpeg", "webm", "m4a", "mp3", "wav"}
 
+
+def database_uri() -> str:
+    db_url = os.getenv("DATABASE_URL")
+    if db_url:
+        return db_url
+    return f"sqlite:///{DATABASE.as_posix()}"
+
+
+def sqlite_path_from_uri(uri: str) -> str:
+    parsed = urlparse(uri)
+    if parsed.scheme != "sqlite":
+        raise ValueError("Unsupported database URI")
+    path = f"{parsed.netloc}{parsed.path}"
+    if os.name == "nt" and path.startswith("/") and len(path) >= 3 and path[2] == ":":
+        path = path[1:]
+    return path
+
+
 app = Flask(__name__, static_folder=str(FRONTEND), static_url_path="")
 app.config.from_object(Config)
+# Environment-driven configuration: secrets and database URL
+app.config["SQLALCHEMY_DATABASE_URI"] = database_uri()
 app.config.update(
-    JWT_SECRET_KEY=os.getenv("JWT_SECRET_KEY", "replace-this-dev-secret-before-production"),
+    SECRET_KEY=os.getenv("SECRET_KEY", app.config.get("SECRET_KEY", "dev-secret")),
+    JWT_SECRET_KEY=os.getenv("JWT_SECRET_KEY", app.config.get("JWT_SECRET_KEY")),
     MAX_CONTENT_LENGTH=25 * 1024 * 1024,
     UPLOAD_FOLDER=str(UPLOADS),
-    SQLALCHEMY_DATABASE_URI=f"sqlite:///{DATABASE.as_posix()}",
     SQLALCHEMY_TRACK_MODIFICATIONS=False,
 )
+# Optionally extend JWT access token expiry (days) via env var JWT_ACCESS_DAYS
+try:
+    access_days = int(os.getenv("JWT_ACCESS_DAYS", "7"))
+    app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(days=access_days)
+except Exception:
+    # If parse fails, keep default behaviour
+    pass
 cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:5000,http://127.0.0.1:5000").split(",")
 CORS(app, resources={r"/api/*": {"origins": cors_origins}})
 jwt = JWTManager(app)
@@ -61,7 +87,12 @@ def now() -> str:
 
 
 def database_connection() -> sqlite3.Connection:
-    connection = sqlite3.connect(DATABASE)
+    sqlite_url = app.config.get("SQLALCHEMY_DATABASE_URI", "")
+    if sqlite_url.startswith("sqlite:///"):
+        db_path = sqlite_path_from_uri(sqlite_url)
+        connection = sqlite3.connect(db_path)
+    else:
+        connection = sqlite3.connect(DATABASE)
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA foreign_keys = ON")
     return connection
@@ -85,6 +116,8 @@ def init_db() -> None:
     DATABASE.parent.mkdir(parents=True, exist_ok=True)
     UPLOADS.mkdir(parents=True, exist_ok=True)
     app.config["UPLOAD_FOLDER"] = str(UPLOADS)
+    if not os.getenv("DATABASE_URL"):
+        app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{DATABASE.as_posix()}"
     with database_context() as connection:
         connection.executescript(SCHEMA.read_text(encoding="utf-8"))
         columns = {row["name"] for row in connection.execute("PRAGMA table_info(users)")}
@@ -117,8 +150,13 @@ def init_db() -> None:
         db.create_all()
 
 
-def api_error(message: str, code: int = 400):
-    return jsonify({"error": message}), code
+def api_error(message: str, code: int = 400, *, error_code: str | None = None, retryable: bool = False):
+    payload = {"error": message}
+    if error_code:
+        payload["code"] = error_code
+    # Include retryable flag for client-side handling when available
+    payload["retryable"] = bool(retryable)
+    return jsonify(payload), code
 
 
 def payload() -> dict:
@@ -140,6 +178,40 @@ def required(*fields):
             return view(*args, **kwargs)
         return wrapped
     return decorator
+
+
+def conversation_title_for_message(message: str) -> str:
+    title = message.strip()
+    if not title:
+        return "Study conversation"
+    if len(title) > 60:
+        title = title[:57].rstrip() + "..."
+    return title
+
+
+def fetch_conversation(connection: sqlite3.Connection, conversation_id: int, uid: int):
+    return connection.execute(
+        "SELECT * FROM conversations WHERE id = ? AND user_id = ?", (conversation_id, uid)
+    ).fetchone()
+
+
+def fetch_conversation_messages(connection: sqlite3.Connection, conversation_id: int, limit: int = 20) -> list[dict]:
+    all_messages = rows(connection.execute(
+        "SELECT role, content FROM chat_messages WHERE conversation_id = ? ORDER BY id ASC", (conversation_id,)
+    ))
+    return all_messages[-limit:]
+
+
+def parse_optional_int(value, field_name: str):
+    if value in (None, ""):
+        return None
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"Invalid {field_name}")
+    if parsed < 1:
+        raise ValueError(f"Invalid {field_name}")
+    return parsed
 
 
 def create_student_seed(connection: sqlite3.Connection, student_id: int) -> None:
@@ -324,19 +396,119 @@ def insights():
     return jsonify({"consistency": min(100, pace), "predicted_mark": predicted, "confidence": "Indicative", "recommendations": ["Schedule one 45-minute deep-work block on your weakest subject.", "Use active recall before opening reference material.", "Take a short quiz after each completed revision cycle."], "disclaimer": "This is a learning signal, not a formal academic prediction."})
 
 
-@app.post("/api/chat")
+@app.post("/api/study-coach/conversations")
 @jwt_required()
-def chat():
-    message = payload().get("message", "").strip()
-    if not message: return api_error("Write a question for your study coach")
-    answer = f"Here is a study-first way to approach this: break ‘{message[:90]}’ into the definition, one worked example, and three recall questions. Tell me your subject or attach a resource so I can make that plan specific."
-    return jsonify({"answer": answer, "mode": "local study-coach fallback", "notice": "Connect an approved server-side AI provider for generated, document-grounded responses. Never enter a personal ChatGPT password into LearnSphere."})
+def create_study_coach_conversation():
+    body = payload()
+    title = conversation_title_for_message(body.get("title", "").strip())
+    with database_context() as connection:
+        cursor = connection.execute(
+            "INSERT INTO conversations (user_id, title, created_at, updated_at) VALUES (?, ?, ?, ?)",
+            (user_id(), title, now(), now())
+        )
+    return jsonify({"success": True, "conversation_id": cursor.lastrowid, "title": title}), 201
+
+
+@app.get("/api/study-coach/conversations")
+@jwt_required()
+def list_study_coach_conversations():
+    uid = user_id()
+    with database_context() as connection:
+        conversations = rows(connection.execute(
+            "SELECT id, title, created_at, updated_at FROM conversations WHERE user_id = ? ORDER BY updated_at DESC", (uid,)
+        ))
+    return jsonify({"success": True, "conversations": conversations})
+
+
+@app.get("/api/study-coach/conversations/<int:conversation_id>")
+@jwt_required()
+def get_study_coach_conversation(conversation_id):
+    uid = user_id()
+    with database_context() as connection:
+        conversation = fetch_conversation(connection, conversation_id, uid)
+        if not conversation:
+            return api_error("Conversation not found", 404)
+        messages = fetch_conversation_messages(connection, conversation_id)
+    return jsonify({"success": True, "conversation": dict(conversation), "messages": messages})
+
+
+@app.delete("/api/study-coach/conversations/<int:conversation_id>")
+@jwt_required()
+def delete_study_coach_conversation(conversation_id):
+    uid = user_id()
+    with database_context() as connection:
+        conversation = fetch_conversation(connection, conversation_id, uid)
+        if not conversation:
+            return api_error("Conversation not found", 404)
+        connection.execute("DELETE FROM conversations WHERE id = ?", (conversation_id,))
+    return jsonify({"success": True, "message": "Conversation deleted"})
+
+
+@app.post("/api/chat")
+@app.post("/api/study-coach/chat")
+@jwt_required()
+def study_coach_chat():
+    body = payload()
+    message = str(body.get("message", "")).strip()
+    if not message:
+        return api_error("Write a question for your study coach")
+    if len(message) > 6000:
+        return api_error("Your question must be 6,000 characters or fewer", 400)
+
+    try:
+        conversation_id = parse_optional_int(body.get("conversation_id"), "conversation_id")
+    except ValueError as exc:
+        return api_error(str(exc), 400)
+
+    with database_context() as connection:
+        uid = user_id()
+        if conversation_id:
+            conversation = fetch_conversation(connection, conversation_id, uid)
+            if not conversation:
+                return api_error("Conversation not found", 404)
+            conversation_id = conversation["id"]
+        else:
+            title = conversation_title_for_message(message)
+            cursor = connection.execute(
+                "INSERT INTO conversations (user_id, title, created_at, updated_at) VALUES (?, ?, ?, ?)",
+                (uid, title, now(), now())
+            )
+            conversation_id = cursor.lastrowid
+            conversation = {"id": conversation_id, "title": title}
+
+        history = fetch_conversation_messages(connection, conversation_id)
+        connection.execute(
+            "INSERT INTO chat_messages (conversation_id, user_id, role, content, created_at) VALUES (?, ?, ?, ?, ?)",
+            (conversation_id, uid, "user", message, now())
+        )
+
+        try:
+            assistant_content = generate_chat_response(history, message)
+        except GeminiServiceError as exc:
+            app.logger.warning("Study Coach AI request failed for user_id=%s conversation_id=%s: %s", uid, conversation_id, exc)
+            return api_error(str(exc), 503, error_code=getattr(exc, "error_code", None), retryable=getattr(exc, "retryable", False))
+        except ValueError as exc:
+            app.logger.warning("Study Coach input validation failed for user_id=%s conversation_id=%s: %s", uid, conversation_id, exc)
+            return api_error(str(exc), 503)
+
+        connection.execute(
+            "INSERT INTO chat_messages (conversation_id, user_id, role, content, created_at) VALUES (?, ?, ?, ?, ?)",
+            (conversation_id, uid, "assistant", assistant_content, now())
+        )
+        connection.execute("UPDATE conversations SET updated_at = ? WHERE id = ?", (now(), conversation_id))
+    return jsonify({
+        "success": True,
+        "conversation_id": conversation_id,
+        "message": {"role": "assistant", "content": assistant_content}
+    })
 
 
 @app.get("/api/integrations")
 @jwt_required()
 def integrations():
-    return jsonify({"providers": [{"name": "OpenAI", "status": "Administrator configuration required", "purpose": "Document-grounded study coaching"}, {"name": "Google Gemini", "status": "Administrator configuration required", "purpose": "Optional provider route"}, {"name": "NotebookLM", "status": "External workspace link", "purpose": "Open uploaded sources in a separate trusted service"}]})
+    api_key = os.getenv("GEMINI_API_KEY", "").strip()
+    configured = bool(api_key) and api_key != "your_key_here"
+    return jsonify({"providers": [{"name": "Google Gemini", "status": "Configured" if configured else "Administrator configuration required", "purpose": "Educational study coaching"}, {"name": "NotebookLM", "status": "External workspace link", "purpose": "Open uploaded sources in a separate trusted service"}]})
 
 
 @app.get("/api/health")

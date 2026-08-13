@@ -43,7 +43,7 @@ D:\itr\project\ML-EDU-06_LearnSphere_AI
 ## What is intentionally not yet production-ready
 
 - SQLite/local uploads must become PostgreSQL/S3 or another private object store.
-- No real OpenAI/Gemini/NotebookLM integration is configured. Do not solicit student passwords.
+- Gemini is configured only with a server-side `GEMINI_API_KEY`; do not solicit student passwords. NotebookLM remains an external workspace link.
 - No document extraction/RAG, OCR, transcription, scheduled surprise tests or validated prediction model.
 - No email verification, password reset, rate limiting, malware scan, user deletion/export, monitoring or legal privacy process.
 - Do not publicly deploy student uploads before these are handled.

@@ -2,6 +2,7 @@ from datetime import datetime
 
 from flask import Blueprint, request
 from routes.common import error, parse_id, public_user_id, response
+from flask_jwt_extended import jwt_required
 from services.timetable_service import service
 from utils.validators import clean_json, integer, required, valid_time
 
@@ -23,6 +24,7 @@ def values(data, partial=False):
 
 
 @timetable_bp.get("/today")
+@jwt_required()
 def today():
     day = datetime.now().strftime("%A")
     records = service.list(public_user_id(), {"day": day})
@@ -30,6 +32,7 @@ def today():
 
 
 @timetable_bp.route("", methods=["GET", "POST"])
+@jwt_required()
 def collection():
     uid = public_user_id()
     if request.method == "GET":
@@ -41,6 +44,7 @@ def collection():
 
 
 @timetable_bp.route("/<record_id>", methods=["GET", "PUT", "DELETE"])
+@jwt_required()
 def item(record_id):
     record = service.get(parse_id(record_id), public_user_id()) if parse_id(record_id) else None
     if not record: return error("Timetable entry not found", 404, "NOT_FOUND")

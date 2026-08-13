@@ -9,3 +9,6 @@ __pycache__/
 .coverage
 node_modules/
 11_deployment/*.log
+04_active_workspace/*.log
+04_active_workspace/*.err.log
+06_code/test_output.txt

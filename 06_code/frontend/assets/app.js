@@ -2,7 +2,12 @@ const state = {
   token: localStorage.getItem("ls_token"),
   user: JSON.parse(localStorage.getItem("ls_user") || "null"),
   view: "overview",
-  subjects: []
+  subjects: [],
+  chat: {
+    conversationId: null,
+    conversations: [],
+    isSending: false
+  }
 };
 
 const apiBase = window.LEARNSPHERE_API_BASE
@@ -64,7 +69,16 @@ async function api(path, options = {}) {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     if (res.status === 401 && state.token) logout();
-    throw new Error(data.error || data.message || "Something went wrong");
+    if (res.status === 405 && path.includes("study-coach")) {
+      const methodErr = new Error("The Study Coach request method is not supported. Please reload the page and try again.");
+      methodErr.retryable = false;
+      throw methodErr;
+    }
+      const errMsg = data.error || data.message || "Something went wrong.";
+      const err = new Error(errMsg);
+      err.retryable = Boolean(data.retryable);
+      err.code = data.code || data.error_code || null;
+      throw err;
   }
   return data;
 }
@@ -161,6 +175,11 @@ async function render() {
 
 async function overview(view) {
   const d = await api("/dashboard");
+  await loadStudyCoachConversations();
+  const conversationOptions = state.chat.conversations.length
+    ? [`<option value="">New conversation</option>`, ...state.chat.conversations.map((conversation) => (`<option value="${conversation.id}">${esc(conversation.title)}</option>`))].join("")
+    : '<option value="">New conversation</option>';
+
   view.innerHTML = `
     <div class="metrics">
       <div class="metric"><label>Subjects</label><b>${d.metrics.subjects}</b><small>Active learning map</small></div>
@@ -182,8 +201,9 @@ async function overview(view) {
     <div class="dashboard-grid">
       <section class="card">
         <h2>Study coach</h2>
-        <div id="chat-log" class="chat-log"><div class="bubble coach">Ask for a revision plan, a concept breakdown, or a better next study move.</div></div>
-        <form id="chat-form" class="chat-form"><input name="message" placeholder="Ask your study coach..."><button class="button primary">Send</button></form>
+        <div class="chat-toolbar"><select id="chat-conversation-select">${conversationOptions}</select><button id="chat-new-conversation" class="text-button">New</button><button id="chat-delete-conversation" class="text-button danger" type="button">Delete</button></div>
+        <div id="chat-log" class="chat-log"></div>
+        <form id="chat-form" class="chat-form"><textarea name="message" rows="2" placeholder="Ask your study coach..."></textarea><button class="button primary">Send</button></form>
       </section>
       <section class="card">
         <h2>Today reflection</h2>
@@ -194,6 +214,11 @@ async function overview(view) {
   bindDoneButtons();
   bindGoButtons();
   $("#chat-form").onsubmit = chatSubmit;
+  $("#chat-form").message.onkeydown = chatKeyDown;
+  $("#chat-conversation-select").onchange = (event) => loadStudyCoachConversation(event.target.value ? Number(event.target.value) : null);
+  $("#chat-new-conversation").onclick = () => loadStudyCoachConversation(null);
+  $("#chat-delete-conversation").onclick = deleteStudyCoachConversation;
+  loadStudyCoachConversation(state.chat.conversationId);
 }
 
 function taskRow(t) {
@@ -215,7 +240,7 @@ function bindDoneButtons() {
 }
 
 function bindGoButtons() {
-  $$("[data-go]").forEach((button) => {
+  $$('[data-go]').forEach((button) => {
     button.onclick = () => {
       state.view = button.dataset.go;
       buildNavigation();
@@ -224,20 +249,154 @@ function bindGoButtons() {
   });
 }
 
+function renderChatLog(messages) {
+  const log = $("#chat-log");
+  if (!log) return;
+  log.innerHTML = messages.length
+    ? messages.map((item) => `<div class="bubble ${item.role === "assistant" ? "coach" : "student"}">${esc(item.content)}</div>`).join("")
+    : `<div class="bubble coach">Ask for a revision plan, a concept breakdown, or a better next study move.</div>`;
+  bindRetryButtons();
+  log.scrollTop = log.scrollHeight;
+}
+
+function setChatLoading(isLoading) {
+  const form = $("#chat-form");
+  if (!form) return;
+  const button = form.querySelector("button");
+  const input = form.querySelector("textarea");
+  if (button) button.disabled = isLoading;
+  if (input) input.disabled = isLoading;
+  if (button) button.textContent = isLoading ? "Thinking..." : "Send";
+}
+
+function chatKeyDown(event) {
+  if (event.key === "Enter" && !event.shiftKey) {
+    event.preventDefault();
+    event.currentTarget.form.requestSubmit();
+  }
+}
+
+async function loadStudyCoachConversations() {
+  try {
+    const d = await api("/study-coach/conversations");
+    state.chat.conversations = d.conversations || [];
+  } catch {
+    state.chat.conversations = [];
+  }
+}
+
+function renderConversationOptions() {
+  const select = $("#chat-conversation-select");
+  if (!select) return;
+  select.innerHTML = state.chat.conversations.length
+    ? [`<option value="">New conversation</option>`, ...state.chat.conversations.map((conversation) => (`<option value="${conversation.id}" ${conversation.id === state.chat.conversationId ? "selected" : ""}>${esc(conversation.title)}</option>`))].join("")
+    : '<option value="">New conversation</option>';
+}
+
+async function loadStudyCoachConversation(conversationId) {
+  if (!conversationId) {
+    state.chat.conversationId = null;
+    renderChatLog([]);
+    renderConversationOptions();
+    return;
+  }
+  try {
+    const d = await api(`/study-coach/conversations/${conversationId}`);
+    state.chat.conversationId = conversationId;
+    renderChatLog(d.messages || []);
+    renderConversationOptions();
+  } catch (error) {
+    toast(error.message);
+    renderChatLog([]);
+  }
+}
+
+async function deleteStudyCoachConversation() {
+  if (!state.chat.conversationId || state.chat.isSending) return;
+  try {
+    await api(`/study-coach/conversations/${state.chat.conversationId}`, {method: "DELETE"});
+    state.chat.conversationId = null;
+    await loadStudyCoachConversations();
+    renderConversationOptions();
+    renderChatLog([]);
+    toast("Conversation deleted");
+  } catch (error) {
+    toast(error.message);
+  }
+}
+
+function bindRetryButtons() {
+  $$("[data-retry-message]").forEach((button) => {
+    button.onclick = () => sendChatMessage(button.dataset.retryMessage);
+  });
+}
+
 async function chatSubmit(event) {
   event.preventDefault();
   const input = event.currentTarget.message;
-  if (!input.value.trim()) return;
-  const log = $("#chat-log");
   const message = input.value.trim();
-  log.insertAdjacentHTML("beforeend", `<div class="bubble student">${esc(message)}</div>`);
+  if (!message) return;
   input.value = "";
+  await sendChatMessage(message);
+}
+
+async function sendChatMessage(message) {
+  if (state.chat.isSending) return;
+  if (!message) return;
+  const log = $("#chat-log");
+  state.chat.isSending = true;
+  setChatLoading(true);
+  log.insertAdjacentHTML("beforeend", `<div class="bubble student">${esc(message)}</div>`);
+  const pending = document.createElement("div");
+  pending.className = "bubble coach loading";
+  pending.textContent = "Thinking...";
+  log.appendChild(pending);
+  log.scrollTop = log.scrollHeight;
   try {
-    const d = await api("/chat", {method: "POST", body: JSON.stringify({message})});
-    log.insertAdjacentHTML("beforeend", `<div class="bubble coach">${esc(d.answer)}<br><small>${esc(d.mode)}</small></div>`);
+    const d = await api("/study-coach/chat", {method: "POST", body: JSON.stringify({message, conversation_id: state.chat.conversationId})});
+    state.chat.conversationId = d.conversation_id || state.chat.conversationId;
+    if (pending.parentNode) pending.remove();
+    log.insertAdjacentHTML("beforeend", `<div class="bubble coach">${esc(d.message.content)}</div>`);
     log.scrollTop = log.scrollHeight;
+    await loadStudyCoachConversations();
+    renderConversationOptions();
   } catch (error) {
-    toast(error.message);
+    if (pending.parentNode) pending.remove();
+    // If the backend marked this as retryable (transient provider error),
+    // attempt one automatic retry after a short delay.
+      if (error && error.code === "RESOURCE_EXHAUSTED") {
+        const quotaMsg = "Study Coach: Gemini's project quota is exhausted. Wait for the quota reset or update quota/billing in Google AI Studio.";
+        log.insertAdjacentHTML("beforeend", `<div class="bubble coach error">${esc(quotaMsg)} <button class="text-button" data-retry-message="${esc(message)}">Retry</button></div>`);
+        bindRetryButtons();
+        log.scrollTop = log.scrollHeight;
+        toast(quotaMsg);
+        return;
+      } else if (error && error.retryable) {
+      await new Promise((r) => setTimeout(r, 1500));
+      try {
+        const d = await api("/study-coach/chat", {method: "POST", body: JSON.stringify({message, conversation_id: state.chat.conversationId})});
+        state.chat.conversationId = d.conversation_id || state.chat.conversationId;
+        log.insertAdjacentHTML("beforeend", `<div class="bubble coach">${esc(d.message.content)}</div>`);
+        await loadStudyCoachConversations();
+        renderConversationOptions();
+        log.scrollTop = log.scrollHeight;
+        bindRetryButtons();
+        return;
+      } catch (err2) {
+        // fall through to show a friendly retry UI
+      }
+    }
+
+    const friendly = (error && error.retryable)
+      ? "AI service is temporarily busy. Please try again in a few moments."
+      : `Gemini could not answer: ${esc(error.message)}`;
+    log.insertAdjacentHTML("beforeend", `<div class="bubble coach error">${esc(friendly)} <button class="text-button" data-retry-message="${esc(message)}">Retry</button></div>`);
+    bindRetryButtons();
+    log.scrollTop = log.scrollHeight;
+    toast(friendly);
+  } finally {
+    state.chat.isSending = false;
+    setChatLoading(false);
   }
 }
 

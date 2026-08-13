@@ -1,5 +1,6 @@
 from flask import Blueprint, request
 from routes.common import error, parse_id, public_user_id, response
+from flask_jwt_extended import jwt_required
 from routes.uploads import optional_pdf
 from services.note_service import service
 from utils.validators import clean_json, integer, required
@@ -8,6 +9,7 @@ notes_bp = Blueprint("notes", __name__, url_prefix="/api/notes")
 
 
 @notes_bp.post("/upload")
+@jwt_required()
 def upload():
     try:
         file_url = optional_pdf("notes")
@@ -36,6 +38,7 @@ def note_values(data, partial=False):
 
 
 @notes_bp.route("", methods=["GET", "POST"])
+@jwt_required()
 def collection():
     uid = public_user_id()
     if request.method == "GET":
@@ -50,6 +53,7 @@ def collection():
 
 
 @notes_bp.route("/<note_id>", methods=["GET", "PUT", "DELETE"])
+@jwt_required()
 def item(note_id):
     record = service.get(parse_id(note_id), public_user_id()) if parse_id(note_id) else None
     if not record:

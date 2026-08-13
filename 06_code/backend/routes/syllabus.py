@@ -1,5 +1,6 @@
 from flask import Blueprint, request
 from routes.common import error, parse_id, public_user_id, response
+from flask_jwt_extended import jwt_required
 from services.syllabus_service import service
 from utils.validators import clean_json, integer, required
 
@@ -15,6 +16,7 @@ def values(data, partial=False):
 
 
 @syllabus_bp.route("", methods=["GET", "POST"])
+@jwt_required()
 def collection():
     uid = public_user_id()
     if request.method == "GET":
@@ -26,6 +28,7 @@ def collection():
 
 
 @syllabus_bp.route("/<record_id>", methods=["GET", "PUT", "DELETE"])
+@jwt_required()
 def item(record_id):
     record = service.get(parse_id(record_id), public_user_id()) if parse_id(record_id) else None
     if not record: return error("Syllabus not found", 404, "NOT_FOUND")
