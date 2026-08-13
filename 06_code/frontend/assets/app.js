@@ -35,7 +35,7 @@ const navItems = [
 ];
 
 const titles = {
-  overview: "Good morning,",
+  overview: "Welcome,",
   planner: "Study planner",
   knowledge: "Knowledge base",
   syllabus: "Syllabus",
